@@ -189,11 +189,6 @@
     overflow-y: hidden;
   }
 
-  .habit-matrix-wrapper table {
-    width: max-content !important;
-    min-width: 700px !important;
-  }
-
   .habit-matrix-wrapper th,
   .habit-matrix-wrapper td {
     white-space: nowrap;
@@ -204,6 +199,14 @@
 .progress-card-track {
   min-width: 0;
   box-sizing: border-box;
+}
+
+.today-schedule-row {
+  min-width: 0;
+}
+
+.today-schedule-main {
+  min-width: 0;
 }
 
 .quantitative-stepper {
@@ -293,4 +296,8 @@
   .habit-schedule-fields > div:last-child button { width: 100%; height: 38px; }
   .reminder-fields { align-items: flex-start !important; gap: 10px; flex-wrap: wrap; }
   .reminder-fields > label { min-height: 40px; }
+  .today-schedule-row { align-items: stretch !important; flex-direction: column; gap: 12px !important; }
+  .today-schedule-main { align-items: flex-start !important; flex-direction: column; gap: 8px !important; width: 100%; }
+  .today-schedule-main > .mono { margin-left: 0 !important; max-width: 100%; padding: 4px 0; line-height: 1.2; }
+  .today-schedule-main .progress-card-track { width: 100%; }
 }

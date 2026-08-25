@@ -37,8 +37,6 @@ const COLORS = {
 
 const CATEGORIES = ["Fitness", "Health", "Productivity", "Discipline", "Mind"];
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
-const UNIT_OPTIONS = ["mins", "liters", "pages", "reps", "hrs"];
-
 /* ============================================================================
    DATE UTILITIES  (local-timezone safe, no UTC drift)
 ============================================================================ */
@@ -98,7 +96,7 @@ function showHabitNotification(habit) {
     !("Notification" in window) ||
     Notification.permission !== "granted"
   ) {
-    return;
+    return false;
   }
 
   new Notification(
@@ -109,6 +107,17 @@ function showHabitNotification(habit) {
       tag: `habit-${habit.id}`,
     }
   );
+  return true;
+}
+
+async function registerNotificationWorker() {
+  if (!("serviceWorker" in navigator)) return null;
+  try {
+    return await navigator.serviceWorker.register("/sw.js");
+  } catch (error) {
+    console.warn("Service worker registration failed", error);
+    return null;
+  }
 }
 
 
@@ -370,6 +379,10 @@ setLoaded(true);
     })();
   }, []);
 
+  useEffect(() => {
+    registerNotificationWorker();
+  }, []);
+
   // debounced persistence
   useEffect(() => {
     if (!loaded || !state) return;
@@ -387,7 +400,7 @@ setLoaded(true);
   useEffect(() => {
   if (!state) return;
 
-  let lastTriggeredMinute = "";
+  let lastTriggeredMinute = localStorage.getItem("habit-os-last-reminder") || "";
 
   const checkReminders = () => {
     const now = new Date();
@@ -433,10 +446,12 @@ setLoaded(true);
         continue;
       }
 
-      showHabitNotification(habit);
+      const notificationSent = showHabitNotification(habit);
+      if (!notificationSent) showToast(`Reminder: ${habit.name}`, "info");
     }
 
     lastTriggeredMinute = triggerKey;
+    localStorage.setItem("habit-os-last-reminder", triggerKey);
   };
 
   checkReminders();
@@ -450,7 +465,7 @@ setLoaded(true);
   return () =>
     clearInterval(interval);
 
-}, [state]);
+}, [state, showToast]);
 
   const api = useMemo(() => {
     if (!state) return null;
@@ -1076,6 +1091,47 @@ function CommandCenter({ setView }) {
     return <EmptyState title="BUILD YOUR SYSTEM" body="You don't have any habits yet. Start with one habit. Build consistency. Build momentum." cta="Create First Habit" onCta={() => setView("habits")} />;
   }
 
+  const todayQueue = activeHabits
+    .filter(h => isScheduledDay(h, today))
+    .map(habit => {
+      const record = findRecord(state.records, habit.id, today);
+      const evaluation = dayEval(habit, record, today, today);
+      return { habit, record, evaluation, percentage: evaluation.score === null ? 0 : Math.round(evaluation.score * 100) };
+    });
+  const pending = todayQueue.filter(({ evaluation }) => evaluation.score !== 1);
+  const urgent = pending.filter(({ habit }) => habit.weight === 3);
+  const commandStreak = overallStreak(activeHabits, state.records, today, state.settings.streakThreshold);
+
+  if (activeHabits.length >= 0) return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 2 }}>
+        <GIcon size={20} color={COLORS.emerald} />
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.2, color: COLORS.textDim }}>{g.text}</span>
+      </div>
+      <h1 style={{ fontSize: 24, fontWeight: 800, margin: "4px 0 18px" }}>{niceDate(today)}</h1>
+      <Btn variant="primary" icon={Target} onClick={() => setView("today")} style={{ marginBottom: 22, padding: "12px 20px", fontSize: 13 }}>ENTER TODAY MODE</Btn>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12 }}>
+        <StatCard label="PENDING TODAY" value={pending.length} sub={`${activeHabits.length} active habits`} accent={pending.length ? COLORS.amber : COLORS.emerald} icon={Target} />
+        <StatCard label="ACTIVE STREAK" value={`${commandStreak.current} days`} sub={`Best: ${commandStreak.best} days`} accent={COLORS.amber} icon={Flame} />
+        <StatCard label="URGENT PRIORITIES" value={urgent.length} sub="Weight 3 habits needing action" accent={urgent.length ? COLORS.crimson : COLORS.emerald} icon={AlertCircle} />
+      </div>
+      <SectionTitle>Today's Queue</SectionTitle>
+      <Card>
+        {todayQueue.length === 0 ? <div style={{ color: COLORS.textFaint, fontSize: 13 }}>No habits are scheduled today.</div> : todayQueue.map(({ habit, record, evaluation, percentage }) => {
+          const status = evaluation.score === 1 ? "Done" : evaluation.score > 0 ? "In progress" : record?.status === "missed" ? "Missed" : "Not started";
+          const statusColor = evaluation.score === 1 ? COLORS.emerald : evaluation.score > 0 ? COLORS.amber : record?.status === "missed" ? COLORS.crimson : COLORS.textFaint;
+          return <div key={habit.id} style={{ display: "grid", gap: 8, padding: "11px 0", borderBottom: `1px solid ${COLORS.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+              <span style={{ minWidth: 0, overflowWrap: "anywhere", fontWeight: 650 }}>{habit.name}</span>
+              <span className="mono" style={{ color: statusColor, flexShrink: 0 }}>{percentage}% · {status}</span>
+            </div>
+            {habit.type === "quantitative" && <Bar pct={percentage} color={statusColor} />}
+          </div>;
+        })}
+      </Card>
+    </div>
+  );
+
   const monthKey = getMonthKey(today);
   const monthStart = monthKey + "-01";
   const score = overallScore(activeHabits, state.records, monthStart, today, today);
@@ -1300,7 +1356,7 @@ function TodayRow({ habit, onEdit }) {
       status === "completed";
 
     return (
-      <div
+      <div className="today-schedule-row"
         style={{
           display: "flex",
           alignItems: "center",
@@ -1324,7 +1380,7 @@ function TodayRow({ habit, onEdit }) {
               today
             );
           }}
-          className="focus-ring"
+          className="today-schedule-main focus-ring"
           style={{
             display: "flex",
             alignItems: "center",
@@ -1441,7 +1497,7 @@ function TodayRow({ habit, onEdit }) {
     rec?.status === "completed";
 
   return (
-    <div
+    <div className="today-schedule-row"
       style={{
         display: "flex",
         alignItems: "center",
@@ -1462,7 +1518,7 @@ function TodayRow({ habit, onEdit }) {
           if (isCompleted) return;
           onEdit();
         }}
-        className="focus-ring"
+        className="today-schedule-main focus-ring"
         style={{
           display: "flex",
           alignItems: "center",
@@ -1573,7 +1629,7 @@ function TodayRow({ habit, onEdit }) {
 function QuantModal({ habit, date, onClose }) {
   const app = useApp();
   const rec = findRecord(app.state.records, habit.id, date);
-  const targetLimit = Math.max(0, Number(habit.targetValue) || 0);
+  const targetLimit = Math.max(1, Number(habit.targetValue) || 1);
   const clampValue = value => Math.min(targetLimit, Math.max(0, Number(value) || 0));
   const [val, setVal] = useState(clampValue(rec?.loggedValue ?? 0));
 
@@ -1765,44 +1821,16 @@ function HabitMatrixView() {
   const [editHabit, setEditHabit] = useState(null);
   const [quantEdit, setQuantEdit] = useState(null);
 
-  // 0 = current week
-  // -1 = previous week
-  // +1 = next week
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [dayOffset, setDayOffset] = useState(0);
 
   const habits = state.habits.filter(
     h => showArchived ? h.archived : !h.archived
   );
 
-  // Find the Monday of the current week.
-  const currentWeekStart = useMemo(() => {
-    const d = fromDateStr(today);
-    const day = d.getDay(); // Sunday = 0, Monday = 1
-    const daysFromMonday = day === 0 ? 6 : day - 1;
-
-    d.setDate(d.getDate() - daysFromMonday);
-
-    return toDateStr(d);
-  }, [today]);
-
-  // Generate exactly 7 days for the selected week.
-  const dates = useMemo(() => {
-    const start = addDays(currentWeekStart, weekOffset * 7);
-
-    return Array.from({ length: 7 }, (_, i) =>
-      addDays(start, i)
-    );
-  }, [currentWeekStart, weekOffset]);
-
-  const weekStart = dates[0];
-  const weekEnd = dates[6];
-
-  const isCurrentWeek = weekOffset === 0;
-
-  // Prevent moving into a future week.
-  const canGoNext = !isCurrentWeek;
-
-  const weekLabel = `${shortDate(weekStart)} — ${shortDate(weekEnd)}`;
+  const selectedDate = addDays(today, dayOffset);
+  const isToday = selectedDate === today;
+  const canGoNext = selectedDate < today;
+  const dayLabel = niceDate(selectedDate);
 
   return (
     <div>
@@ -1828,7 +1856,7 @@ function HabitMatrixView() {
               fontSize: 11,
             }}
           >
-            {weekLabel}
+            {dayLabel}
           </div>
         </div>
 
@@ -1839,26 +1867,26 @@ function HabitMatrixView() {
             alignItems: "center",
           }}
         >
-          {/* PREVIOUS WEEK */}
+          {/* PREVIOUS DAY */}
           <Btn
-            onClick={() => setWeekOffset(w => w - 1)}
+            onClick={() => setDayOffset(offset => offset - 1)}
           >
             ←
           </Btn>
 
           {/* TODAY */}
           <Btn
-            variant={isCurrentWeek ? "primary" : "ghost"}
-            onClick={() => setWeekOffset(0)}
+            variant={isToday ? "primary" : "ghost"}
+            onClick={() => setDayOffset(0)}
           >
             TODAY
           </Btn>
 
-          {/* NEXT WEEK */}
+          {/* NEXT DAY */}
           <Btn
             onClick={() => {
               if (canGoNext) {
-                setWeekOffset(w => w + 1);
+                setDayOffset(offset => offset + 1);
               }
             }}
             disabled={!canGoNext}
@@ -1955,10 +1983,10 @@ function HabitMatrixView() {
                   WT
                 </th>
 
-                {/* 7 DAYS */}
-                {dates.map(d => {
+                {/* SELECTED DAY */}
+                {[selectedDate].map(d => {
                   const date = fromDateStr(d);
-                  const isToday = d === today;
+                  const isSelectedToday = d === today;
                   const isFuture = d > today;
 
                   return (
@@ -1972,7 +2000,7 @@ function HabitMatrixView() {
                           : isFuture
                             ? `${COLORS.slate}08`
                             : undefined,
-                        color: isToday
+                        color: isSelectedToday
                           ? COLORS.emerald
                           : undefined,
                       }}
@@ -1993,13 +2021,13 @@ function HabitMatrixView() {
                         className="mono"
                         style={{
                           fontSize: 11,
-                          fontWeight: isToday ? 800 : 600,
+                          fontWeight: isSelectedToday ? 800 : 600,
                         }}
                       >
                         {date.getDate()}
                       </div>
 
-                      {isToday && (
+                      {isSelectedToday && (
                         <div
                           style={{
                             fontSize: 7,
@@ -2036,8 +2064,8 @@ function HabitMatrixView() {
                 const c = habitConsistency(
                   h,
                   state.records,
-                  weekStart,
-                  today,
+                  selectedDate,
+                  selectedDate,
                   today
                 );
 
@@ -2098,7 +2126,7 @@ function HabitMatrixView() {
                     </td>
 
                     {/* DAYS */}
-                    {dates.map(d => (
+                    {[selectedDate].map(d => (
                       <MatrixCell
                         key={d}
                         habit={h}
@@ -2233,8 +2261,8 @@ function HabitEditor({ habit, onClose }) {
   const [name, setName] = useState(habit?.name || "");
   const [category, setCategory] = useState(habit?.category || "Fitness");
   const [type, setType] = useState(habit?.type || "binary");
-  const [target, setTarget] = useState(habit?.targetValue || 1);
-  const [unit, setUnit] = useState(habit?.unit || "reps");
+  const [target, setTarget] = useState(Math.max(1, Number(habit?.targetValue) || 1));
+  const [unit, setUnit] = useState(habit?.unit || "units");
   const [weight, setWeight] = useState(Math.max(1, Math.min(3, Number(habit?.weight ?? 1))));
   const [freq, setFreq] = useState(habit?.frequency || [0,1,2,3,4,5,6]);
   const [reminderEnabled, setReminderEnabled] = useState(habit?.reminderEnabled || false);
@@ -2243,15 +2271,18 @@ function HabitEditor({ habit, onClose }) {
 
   function save() {
     if (!name.trim()) { setError("Name is required"); return; }
+    const targetValue = Math.max(1, Number(target) || 0);
+    const normalizedUnit = unit.trim();
     if (weight < 1 || weight > 3) { setError("Weight must be between 1 and 3"); return; }
+    if (type === "quantitative" && !normalizedUnit) { setError("Unit is required"); return; }
     if (freq.length === 0) { setError("Select at least one scheduled day"); return; }
     const dup = app.state.habits.some(h => h.id !== habit?.id && !h.archived && h.name.trim().toLowerCase() === name.trim().toLowerCase());
     if (dup) { setError("A habit with this name already exists"); return; }
 
     const payload = {
       name: name.trim(), category, type, weight: Number(weight), frequency: freq,
-      targetValue: type === "quantitative" ? Number(target) : undefined,
-      unit: type === "quantitative" ? unit : undefined,
+      targetValue: type === "quantitative" ? targetValue : undefined,
+      unit: type === "quantitative" ? normalizedUnit : undefined,
       reminderEnabled, reminderTime,
     };
     if (isNew) app.addHabit(payload);
@@ -2295,12 +2326,7 @@ function HabitEditor({ habit, onClose }) {
         {type === "quantitative" && (
           <div className="habit-unit-fields">
             <TextField label="Target Amount" type="number" min="1" value={target} onChange={setTarget} />
-            <label htmlFor="unit-of-measurement">
-              <FieldLabel>Units of Measurement</FieldLabel>
-              <select id="unit-of-measurement" name="unit" value={unit} onChange={e => setUnit(e.target.value)} className="habit-select focus-ring">
-                {UNIT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-              </select>
-            </label>
+            <TextField label="Custom Unit" name="unit-of-measurement" value={unit} onChange={setUnit} placeholder="e.g. chapters, glasses, km" />
           </div>
         )}
 
@@ -2446,6 +2472,51 @@ function AnalyticsView() {
         title="NO DATA YET"
         body="Add habits and start tracking to unlock your performance intelligence."
       />
+    );
+  }
+
+  if (activeHabits.length > 0) {
+    const tracked = state.records.filter(record => record.date <= today && record.status !== "untracked");
+    const completed = tracked.filter(record => record.status === "completed").length;
+    const velocity = tracked.length ? (completed / tracked.length) * 100 : 0;
+    const targetRows = activeHabits.filter(habit => habit.type === "quantitative").map(habit => {
+      const rows = state.records.filter(record => record.habitId === habit.id && record.date <= today && record.status !== "untracked");
+      const actual = rows.reduce((sum, record) => sum + Math.min(Number(record.loggedValue) || (record.status === "completed" ? Number(habit.targetValue) : 0), Number(habit.targetValue) || 1), 0);
+      const target = rows.length * (Number(habit.targetValue) || 1);
+      return { habit, actual, target, rate: target ? (actual / target) * 100 : 0 };
+    });
+    const weekdays = WEEKDAY_LABELS.map((label, day) => {
+      const days = tracked.filter(record => fromDateStr(record.date).getDay() === day);
+      const done = days.filter(record => record.status === "completed").length;
+      return { label, rate: days.length ? (done / days.length) * 100 : 0 };
+    });
+    const correlations = activeHabits.map(habit => {
+      const rows = state.records.filter(record => record.habitId === habit.id && record.date <= today && record.status !== "untracked");
+      const completionRate = rows.length ? rows.filter(record => record.status === "completed").length / rows.length * 100 : 0;
+      return { habit, completionRate };
+    }).sort((a, b) => b.completionRate - a.completionRate);
+
+    return (
+      <div>
+        <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Analytics</h1>
+        <div style={{ color: COLORS.textFaint, fontSize: 12.5 }}>{monthLabel(getMonthKey(today))} · Trends and insights</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12, marginTop: 20 }}>
+          <StatCard label="COMPLETION VELOCITY" value={`${velocity.toFixed(0)}%`} sub={`${completed} completed actions`} accent={COLORS.emerald} icon={TrendingUp} />
+          <StatCard label="TRACKED ACTIONS" value={tracked.length} sub="all recorded days" icon={Activity} />
+          <StatCard label="QUANTITATIVE GOALS" value={targetRows.length} sub="targets with actuals" icon={Target} />
+        </div>
+        <SectionTitle>Target Completion vs Actual</SectionTitle>
+        <Card>{targetRows.length ? targetRows.map(({ habit, actual, target, rate }) => (
+          <div key={habit.id} style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 6 }}><span>{habit.name}</span><span className="mono">{actual.toFixed(0)} / {target.toFixed(0)} {habit.unit}</span></div>
+            <Bar pct={rate} color={rate >= 80 ? COLORS.emerald : COLORS.amber} />
+          </div>
+        )) : <div style={{ color: COLORS.textFaint }}>Add a quantitative habit to compare targets with actual output.</div>}</Card>
+        <SectionTitle>Day-of-Week Breakdown</SectionTitle>
+        <Card><div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 8, alignItems: "end", minHeight: 140 }}>{weekdays.map(day => <div key={day.label} style={{ display: "grid", gap: 6, justifyItems: "center" }}><div style={{ width: "100%", height: `${Math.max(8, day.rate)}px`, maxHeight: 100, background: day.rate >= 70 ? COLORS.emerald : COLORS.amber, borderRadius: 3 }} title={`${day.rate.toFixed(0)}%`} /><span className="mono" style={{ fontSize: 10, color: COLORS.textFaint }}>{day.label}</span></div>)}</div></Card>
+        <SectionTitle>Goal Correlation</SectionTitle>
+        <Card>{correlations.map(({ habit, completionRate }) => <div key={habit.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "9px 0", borderBottom: `1px solid ${COLORS.border}` }}><span>{habit.name}</span><span className="mono" style={{ color: completionRate >= 70 ? COLORS.emerald : COLORS.amber }}>{completionRate.toFixed(0)}% completion</span></div>)}</Card>
+      </div>
     );
   }
 
