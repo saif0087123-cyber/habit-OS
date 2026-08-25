@@ -37,6 +37,7 @@ const COLORS = {
 
 const CATEGORIES = ["Fitness", "Health", "Productivity", "Discipline", "Mind"];
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const UNIT_OPTIONS = ["mins", "liters", "pages", "reps", "hrs"];
 
 /* ============================================================================
    DATE UTILITIES  (local-timezone safe, no UTC drift)
@@ -710,20 +711,21 @@ function GlobalStyle() {
       .heatmap-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; }
       .heatmap-scale { display: inline-flex; align-items: center; flex-wrap: wrap; gap: clamp(5px, .7vw, 9px); }
       .heatmap-swatch { width: clamp(13px, 1.35vw, 20px); height: clamp(13px, 1.35vw, 20px); border-radius: clamp(3px, .3vw, 5px); flex: 0 0 auto; }
-      .app-header { position: fixed; top: 0; left: 0; right: 0; height: 68px; z-index: 80; border-bottom: 1px solid ${COLORS.border}; background: rgba(7, 10, 17, .76); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+      .app-header { position: static; height: 68px; z-index: 80; border-bottom: 1px solid ${COLORS.border}; background: rgba(7, 10, 17, .76); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
       .app-header-inner { height: 100%; max-width: 1240px; margin: 0 auto; padding: 0 22px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px; }
       .header-links { display: flex; align-items: center; justify-content: center; gap: 4px; }
       .header-link { color: ${COLORS.textDim}; background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 8px 10px; font-size: 10px; font-weight: 800; letter-spacing: .7px; white-space: nowrap; }
       .header-link.active { color: ${COLORS.text}; background: ${COLORS.indigo}1c; border-color: ${COLORS.indigo}55; }
+      .header-link:hover { color: ${COLORS.text}; border-color: ${COLORS.cyan}66; box-shadow: 0 0 16px ${COLORS.cyan}22; }
       .mobile-menu-button, .mobile-drawer { display: none; }
       .ambient { position: fixed; pointer-events: none; border-radius: 999px; filter: blur(80px); opacity: .32; z-index: 0; animation: floatGlow 12s ease-in-out infinite; }
       .ambient-one { width: 260px; height: 260px; top: 8%; right: 8%; background: ${COLORS.indigo}; }
       .ambient-two { width: 220px; height: 220px; bottom: 4%; left: 10%; background: ${COLORS.cyan}; animation-delay: -5s; }
       @keyframes floatGlow { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(22px, -18px, 0) scale(1.12); } }
-      .app-main { position: relative; z-index: 1; padding-top: 68px; }
+      .app-main { position: relative; z-index: 1; }
       @media (max-width: 1100px) { .header-links { gap: 0; } .header-link { padding-inline: 7px; font-size: 9px; } }
-      @media (max-width: 900px) {
-        .app-header { height: 62px; }
+      @media (max-width: 767px) {
+        .app-header { position: sticky; top: 0; height: 62px; }
         .app-header-inner { display: flex; justify-content: space-between; padding: 0 16px; }
         .header-links, .header-cta { display: none; }
         .mobile-menu-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid ${COLORS.border}; border-radius: 9px; background: ${COLORS.surface2}; color: ${COLORS.text}; }
@@ -868,8 +870,8 @@ function EmptyState({ title, body, cta, onCta }) {
 function Bar({ pct, color }) {
   const c = color || (pct >= 80 ? COLORS.emerald : pct >= 60 ? COLORS.amber : COLORS.crimson);
   return (
-    <div style={{ background: COLORS.surface2, borderRadius: 4, height: 8, overflow: "hidden" }}>
-      <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: "100%", background: c, borderRadius: 4, transition: "width .4s ease" }} />
+    <div className="progress-track" style={{ background: COLORS.surface2, borderRadius: 4, height: 8, overflow: "hidden", boxSizing: "border-box", width: "100%" }}>
+      <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: "100%", background: c, borderRadius: 4, transition: "width .4s ease", boxSizing: "border-box" }} />
     </div>
   );
 }
@@ -964,20 +966,8 @@ function Onboarding() {
   );
 }
 
- function TextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  autoFocus,
-  suffix,
-  name
-}) {
-  const fieldId =
-    name ||
-    label?.toLowerCase().replace(/\s+/g, "-");
-
+function TextField({ label, value, onChange, placeholder, type = "text", autoFocus, suffix, name, min, max }) {
+  const fieldId = name || label?.toLowerCase().replace(/\s+/g, "-");
   return (
     <label
       htmlFor={fieldId}
@@ -990,7 +980,7 @@ function Onboarding() {
       )}
 
       <div
-        style={{
+      style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
@@ -1001,6 +991,8 @@ function Onboarding() {
           name={fieldId}
           autoFocus={autoFocus}
           type={type}
+          min={min}
+          max={max}
           value={value}
           placeholder={placeholder}
           onChange={e =>
@@ -1515,10 +1507,10 @@ function TodayRow({ habit, onEdit }) {
             {habit.unit}
           </div>
 
-          <div
+          <div className="progress-card-track"
             style={{
               marginTop: 8,
-              width: 140,
+              width: "100%",
             }}
           >
             <Bar pct={pct} />
@@ -1581,10 +1573,12 @@ function TodayRow({ habit, onEdit }) {
 function QuantModal({ habit, date, onClose }) {
   const app = useApp();
   const rec = findRecord(app.state.records, habit.id, date);
-  const [val, setVal] = useState(rec?.loggedValue ?? "");
+  const targetLimit = Math.max(0, Number(habit.targetValue) || 0);
+  const clampValue = value => Math.min(targetLimit, Math.max(0, Number(value) || 0));
+  const [val, setVal] = useState(clampValue(rec?.loggedValue ?? 0));
 
   function save() {
-    const n = Number(val) || 0;
+    const n = clampValue(val);
     const status = n >= habit.targetValue ? "completed" : n > 0 ? "partial" : "untracked";
     app.setRecord(habit.id, date, { loggedValue: n, status, targetSnapshot: habit.targetValue });
     onClose();
@@ -1594,9 +1588,17 @@ function QuantModal({ habit, date, onClose }) {
     <ModalShell onClose={onClose}>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, color: COLORS.textFaint, marginBottom: 4 }}>{habit.name.toUpperCase()}</div>
       <div style={{ fontSize: 13, color: COLORS.textDim, marginBottom: 16 }}>Target: {habit.targetValue} {habit.unit}</div>
-      <input id="quantitative-value" name="quantitativeValue" autoFocus type="number" value={val} onChange={e => setVal(e.target.value)}
-        className="focus-ring mono"
-        style={{ width: "100%", fontSize: 30, fontWeight: 700, background: COLORS.surface2, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "14px 16px", color: COLORS.text, marginBottom: 10 }} />
+      <div className="quantitative-stepper">
+        <button type="button" className="stepper-button focus-ring" aria-label="Decrease tracked amount" disabled={Number(val) <= 0} onClick={() => setVal(value => clampValue(Number(value) - 1))}>-</button>
+        <input id="quantitative-value" name="quantitativeValue" autoFocus type="number" min="0" max={targetLimit} value={val} onChange={e => setVal(e.target.value === "" ? "" : clampValue(e.target.value))} onKeyDown={e => {
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            setVal(value => clampValue(Number(value) + (e.key === "ArrowUp" ? 1 : -1)));
+          }
+        }}
+          className="focus-ring mono quantitative-input" />
+        <button type="button" className="stepper-button focus-ring" aria-label="Increase tracked amount" disabled={Number(val) >= targetLimit} onClick={() => setVal(value => clampValue(Number(value) + 1))}>+</button>
+      </div>
       <div style={{ fontSize: 12, color: COLORS.textFaint, marginBottom: 18 }} className="mono">
         {val || 0} / {habit.targetValue} {habit.unit} · {Math.min(100, Math.round((Number(val || 0) / habit.targetValue) * 100))}%
       </div>
@@ -1737,11 +1739,11 @@ function BinaryEditModal({
 
 function ModalShell({ children, onClose, wide }) {
   return (
-    <div onClick={onClose} style={{
+    <div className="modal-overlay" onClick={onClose} style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center",
       justifyContent: "center", zIndex: 100, padding: 16,
     }}>
-      <div onClick={e => e.stopPropagation()} className="card-anim" style={{
+      <div onClick={e => e.stopPropagation()} className="card-anim modal-panel" style={{
         background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 14,
         padding: 24, width: "100%", maxWidth: wide ? 560 : 380, maxHeight: "85vh", overflow: "auto",
       }}>
@@ -2233,7 +2235,7 @@ function HabitEditor({ habit, onClose }) {
   const [type, setType] = useState(habit?.type || "binary");
   const [target, setTarget] = useState(habit?.targetValue || 1);
   const [unit, setUnit] = useState(habit?.unit || "reps");
-  const [weight, setWeight] = useState(habit?.weight ?? 2);
+  const [weight, setWeight] = useState(Math.max(1, Math.min(3, Number(habit?.weight ?? 1))));
   const [freq, setFreq] = useState(habit?.frequency || [0,1,2,3,4,5,6]);
   const [reminderEnabled, setReminderEnabled] = useState(habit?.reminderEnabled || false);
   const [reminderTime, setReminderTime] = useState(habit?.reminderTime || "19:00");
@@ -2241,7 +2243,7 @@ function HabitEditor({ habit, onClose }) {
 
   function save() {
     if (!name.trim()) { setError("Name is required"); return; }
-    if (weight < 1 || weight > 3) { setError("Weight must be between 1.0 and 3.0"); return; }
+    if (weight < 1 || weight > 3) { setError("Weight must be between 1 and 3"); return; }
     if (freq.length === 0) { setError("Select at least one scheduled day"); return; }
     const dup = app.state.habits.some(h => h.id !== habit?.id && !h.archived && h.name.trim().toLowerCase() === name.trim().toLowerCase());
     if (dup) { setError("A habit with this name already exists"); return; }
@@ -2291,21 +2293,41 @@ function HabitEditor({ habit, onClose }) {
         </div>
 
         {type === "quantitative" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <TextField label="Target" type="number" value={target} onChange={setTarget} />
-            <TextField label="Unit" value={unit} onChange={setUnit} placeholder="ml, min, km, pages…" />
+          <div className="habit-unit-fields">
+            <TextField label="Target Amount" type="number" min="1" value={target} onChange={setTarget} />
+            <label htmlFor="unit-of-measurement">
+              <FieldLabel>Units of Measurement</FieldLabel>
+              <select id="unit-of-measurement" name="unit" value={unit} onChange={e => setUnit(e.target.value)} className="habit-select focus-ring">
+                {UNIT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
           </div>
         )}
 
-        <div>
+        <div className="habit-schedule-fields">
           <FieldLabel>Schedule</FieldLabel>
           <WeekdayPicker value={freq} onChange={setFreq} />
         </div>
 
-        <TextField label="Weight (1.0 – 3.0, importance)" type="number" value={weight} onChange={setWeight} />
+        <div>
+          <FieldLabel>Importance</FieldLabel>
+          <div className="weight-control" role="radiogroup" aria-label="Habit importance">
+            {[1, 2, 3].map(level => (
+              <button key={level} type="button" role="radio" aria-checked={weight === level} className="weight-option focus-ring" onClick={() => { setWeight(level); setError(""); }}>
+                {level}
+              </button>
+            ))}
+          </div>
+          <input type="number" min="1" max="3" value={weight} onChange={e => {
+            const next = Number(e.target.value);
+            if (Number.isFinite(next)) setWeight(Math.max(1, Math.min(3, next)));
+          }} onKeyDown={e => {
+            if ((e.key === "ArrowUp" && weight >= 3) || (e.key === "ArrowDown" && weight <= 1)) e.preventDefault();
+          }} tabIndex={-1} aria-hidden="true" className="visually-hidden" />
+        </div>
 
-        <div
-  style={{
+          <div className="reminder-fields"
+        style={{
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
