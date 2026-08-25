@@ -1,24 +1,26 @@
-import React, { useState, useEffect, useMemo, useCallback, createContext, useContext, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, createContext, useContext, useRef } from "react";
 import {
   Check, X, Minus, Flame, TrendingUp, TrendingDown, Calendar as CalendarIcon,
   Settings as SettingsIcon, BarChart3, Grid3x3, Trophy, Download, Upload,
-  Plus, ChevronLeft, ChevronRight, Archive, ArchiveRestore, Bell, Home,
+  Plus, Archive, ArchiveRestore, Bell, Home,
   Target, LayoutGrid, History as HistoryIcon, Swords, Sparkles, AlertCircle,
-  Sun, Moon, Sunset, MoonStar, Pencil, Trash2, Snowflake, Activity
+  Sun, Moon, Sunset, MoonStar, Pencil, Trash2, Activity, Menu
 } from "lucide-react";
 import { loadAppState, saveAppState } from "./db";
 /* ============================================================================
    DESIGN TOKENS
 ============================================================================ */
 const COLORS = {
-  bg: "#0D0F12",
-  surface: "#16191E",
-  surface2: "#1B1F26",
-  border: "#2A2E37",
-  text: "#F3F4F6",
-  textDim: "#8B92A0",
-  textFaint: "#565D6B",
-  emerald: "#10B981",
+  bg: "#0B0F17",
+  surface: "rgba(22, 31, 48, 0.74)",
+  surface2: "rgba(29, 41, 63, 0.86)",
+  border: "rgba(148, 163, 184, 0.18)",
+  text: "#F9FAFB",
+  textDim: "#AAB5C7",
+  textFaint: "#718096",
+  emerald: "#22D3A2",
+  indigo: "#6366F1",
+  cyan: "#06B6D4",
   crimson: "#EF4444",
   amber: "#F59E0B",
   slate: "#64748B",
@@ -35,7 +37,6 @@ const COLORS = {
 
 const CATEGORIES = ["Fitness", "Health", "Productivity", "Discipline", "Mind"];
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
-const WEEKDAY_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
 /* ============================================================================
    DATE UTILITIES  (local-timezone safe, no UTC drift)
@@ -241,7 +242,7 @@ function categoryBreakdown(habits, records, fromDate, toDate, today) {
 
 /* Streak for a single habit: consecutive scheduled occurrences completed (or graced), walking backward from today */
 function habitStreak(habit, records, today) {
-  let current = 0, best = 0, run = 0;
+  let current, best = 0, run = 0;
   // walk forward from creation to compute best, and track current from the end
   let d = habit.createdAt.slice(0, 10);
   const seq = [];
@@ -251,7 +252,6 @@ function habitStreak(habit, records, today) {
       const ev = dayEval(habit, rec, d, today);
       if (d === today && ev.status === "untracked") { d = addDays(d, 1); continue; }
       const good = ev.score === 1 || ev.graced;
-      const bad = !ev.excluded && !good;
       if (ev.excluded && !ev.graced) { /* skip, doesn't break or extend */ }
       else { seq.push(good); }
     }
@@ -269,7 +269,7 @@ function habitStreak(habit, records, today) {
 }
 
 function overallStreak(habits, records, today, threshold) {
-  let current = 0, best = 0, run = 0;
+  let current, best = 0, run = 0;
   const active = habits.filter(h => !h.archived);
   if (active.length === 0) return { current: 0, best: 0 };
   const earliest = active.reduce((min, h) => h.createdAt.slice(0,10) < min ? h.createdAt.slice(0,10) : min, today);
@@ -311,6 +311,7 @@ export default function App() {
   const [state, setState] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState("command");
+  const [navOpen, setNavOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const saveTimer = useRef(null);
 
@@ -634,7 +635,6 @@ setLoaded(true);
     return <Shell><LoadingScreen /></Shell>;
   }
 
-  const activeHabits = state.habits.filter(h => !h.archived);
   const showOnboarding = !state.onboarded && state.habits.length === 0;
 
   return (
@@ -643,9 +643,9 @@ setLoaded(true);
         {showOnboarding ? (
           <Onboarding />
         ) : (
-          <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
-            <SideNav view={view} setView={setView} />
-            <main style={{ flex: 1, overflow: "auto", minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+            <AppHeader view={view} setView={setView} navOpen={navOpen} setNavOpen={setNavOpen} />
+            <main className="app-main" style={{ flex: 1, overflow: "auto", minWidth: 0 }}>
               <div style={{ maxWidth: 1180, margin: "0 auto", padding: "20px 20px 100px" }}>
                 {view === "command" && <CommandCenter setView={setView} />}
                 {view === "today" && <TodayFocusMode setView={setView} />}
@@ -659,7 +659,6 @@ setLoaded(true);
             </main>
           </div>
         )}
-        <MobileNav view={view} setView={setView} hidden={showOnboarding} />
         {toast && <Toast toast={toast} />}
       </Shell>
     </AppCtx.Provider>
@@ -672,11 +671,14 @@ setLoaded(true);
 function Shell({ children }) {
   return (
     <div style={{
-      background: COLORS.bg, color: COLORS.text, minHeight: "100%", height: "100%",
-      fontFamily: "'Inter','Plus Jakarta Sans',system-ui,sans-serif",
+      background: `radial-gradient(circle at 82% -10%, ${COLORS.indigo}22, transparent 34%), radial-gradient(circle at 8% 92%, ${COLORS.cyan}12, transparent 30%), ${COLORS.bg}`,
+      color: COLORS.text, minHeight: "100%", height: "100%",
+      fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif",
       fontSize: 14, position: "relative", display: "flex", flexDirection: "column",
     }}>
       <GlobalStyle />
+      <div className="ambient ambient-one" />
+      <div className="ambient ambient-two" />
       {children}
     </div>
   );
@@ -685,20 +687,55 @@ function Shell({ children }) {
 function GlobalStyle() {
   return (
     <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+      @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
       * { box-sizing: border-box; }
       body, html, #root { height: 100%; margin: 0; }
+      body { background: ${COLORS.bg}; }
+      #root { width: 100%; max-width: none; min-height: 100svh; text-align: left; }
       ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: ${COLORS.border}; border-radius: 4px; }
-      .mono { font-family: 'JetBrains Mono', monospace; }
-      button { font-family: inherit; cursor: pointer; }
-      input, select { font-family: inherit; }
-      .focus-ring:focus-visible { outline: 2px solid ${COLORS.emerald}; outline-offset: 2px; }
+      ::-webkit-scrollbar-track { background: ${COLORS.bg}; }
+      ::-webkit-scrollbar-thumb { background: #34415a; border-radius: 4px; }
+      .mono { font-family: 'Space Mono', monospace; }
+      button, input, select { font-family: inherit; }
+      button { cursor: pointer; }
+      .focus-ring:focus-visible { outline: 2px solid ${COLORS.cyan}; outline-offset: 3px; }
       @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
       @keyframes fadeUp { from { opacity:0; transform: translateY(6px);} to {opacity:1; transform:translateY(0);} }
       @keyframes popIn { from { opacity:0; transform: scale(.92);} to {opacity:1; transform:scale(1);} }
       .card-anim { animation: fadeUp .35s ease both; }
+      .glass-panel { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+      .heatmap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15px, 1fr)); gap: clamp(4px, .65vw, 9px); width: 100%; }
+      .heatmap-cell { width: 100%; aspect-ratio: 1; min-width: 0; border-radius: clamp(3px, .35vw, 6px); transition: transform .16s ease, filter .16s ease; }
+      .heatmap-cell:hover { transform: scale(1.18); filter: brightness(1.2); }
+      .heatmap-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: 1.5rem; }
+      .heatmap-scale { display: inline-flex; align-items: center; flex-wrap: wrap; gap: clamp(5px, .7vw, 9px); }
+      .heatmap-swatch { width: clamp(13px, 1.35vw, 20px); height: clamp(13px, 1.35vw, 20px); border-radius: clamp(3px, .3vw, 5px); flex: 0 0 auto; }
+      .app-header { position: fixed; top: 0; left: 0; right: 0; height: 68px; z-index: 80; border-bottom: 1px solid ${COLORS.border}; background: rgba(7, 10, 17, .76); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+      .app-header-inner { height: 100%; max-width: 1240px; margin: 0 auto; padding: 0 22px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px; }
+      .header-links { display: flex; align-items: center; justify-content: center; gap: 4px; }
+      .header-link { color: ${COLORS.textDim}; background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 8px 10px; font-size: 10px; font-weight: 800; letter-spacing: .7px; white-space: nowrap; }
+      .header-link.active { color: ${COLORS.text}; background: ${COLORS.indigo}1c; border-color: ${COLORS.indigo}55; }
+      .mobile-menu-button, .mobile-drawer { display: none; }
+      .ambient { position: fixed; pointer-events: none; border-radius: 999px; filter: blur(80px); opacity: .32; z-index: 0; animation: floatGlow 12s ease-in-out infinite; }
+      .ambient-one { width: 260px; height: 260px; top: 8%; right: 8%; background: ${COLORS.indigo}; }
+      .ambient-two { width: 220px; height: 220px; bottom: 4%; left: 10%; background: ${COLORS.cyan}; animation-delay: -5s; }
+      @keyframes floatGlow { 0%, 100% { transform: translate3d(0, 0, 0) scale(1); } 50% { transform: translate3d(22px, -18px, 0) scale(1.12); } }
+      .app-main { position: relative; z-index: 1; padding-top: 68px; }
+      @media (max-width: 1100px) { .header-links { gap: 0; } .header-link { padding-inline: 7px; font-size: 9px; } }
+      @media (max-width: 900px) {
+        .app-header { height: 62px; }
+        .app-header-inner { display: flex; justify-content: space-between; padding: 0 16px; }
+        .header-links, .header-cta { display: none; }
+        .mobile-menu-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border: 1px solid ${COLORS.border}; border-radius: 9px; background: ${COLORS.surface2}; color: ${COLORS.text}; }
+        .mobile-drawer { display: flex; position: fixed; top: 62px; left: 0; right: 0; z-index: 79; flex-direction: column; gap: 4px; padding: 12px 16px 16px; background: rgba(11, 15, 23, .94); border-bottom: 1px solid ${COLORS.border}; backdrop-filter: blur(18px); transform: translateY(-120%); transition: transform .28s ease; }
+        .mobile-drawer.open { transform: translateY(0); }
+        .mobile-drawer .header-link { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; font-size: 11px; text-align: left; }
+        .app-main { padding-top: 62px; }
+      }
+      @media (hover: hover) {
+        button:hover { filter: brightness(1.08); }
+        .card-anim:hover { border-color: rgba(99, 102, 241, .38); }
+      }
     `}</style>
   );
 }
@@ -725,68 +762,26 @@ const NAV_ITEMS = [
   { id: "settings", label: "SETTINGS", icon: SettingsIcon },
 ];
 
-function SideNav({ view, setView }) {
+function AppHeader({ view, setView, navOpen, setNavOpen }) {
+  const navigate = id => { setView(id); setNavOpen(false); };
   return (
-    <nav className="side-nav-desktop" style={{
-      width: 220, borderRight: `1px solid ${COLORS.border}`, padding: "22px 12px",
-      display: "flex", flexDirection: "column", gap: 2, flexShrink: 0,
-    }}>
-      <div style={{ padding: "0 10px 22px" }}>
-        <div style={{ fontWeight: 800, letterSpacing: 0.5, fontSize: 15 }}>PERFORMANCE OS</div>
-        <div style={{ color: COLORS.textFaint, fontSize: 11, marginTop: 2 }} className="mono">v3.0</div>
+    <header className="app-header">
+      <div className="app-header-inner">
+        <button onClick={() => navigate("command")} className="focus-ring" style={{ display: "flex", alignItems: "center", gap: 9, border: "none", background: "transparent", color: COLORS.text, padding: 0, textAlign: "left" }} aria-label="Go to command center">
+          <span style={{ width: 30, height: 30, borderRadius: 9, display: "grid", placeItems: "center", background: `linear-gradient(135deg, ${COLORS.indigo}, ${COLORS.cyan})`, color: "white", boxShadow: `0 0 22px ${COLORS.indigo}55` }}><Activity size={16} /></span>
+          <span><strong style={{ display: "block", fontSize: 14, letterSpacing: .8 }}>HABIT OS</strong><small className="mono" style={{ display: "block", color: COLORS.textFaint, fontSize: 8, marginTop: 1 }}>PERFORMANCE SYSTEM</small></span>
+        </button>
+        <nav className="header-links" aria-label="Primary navigation">
+          {NAV_ITEMS.slice(0, 6).map(item => { const Icon = item.icon; return <button key={item.id} onClick={() => navigate(item.id)} className={`header-link focus-ring ${view === item.id ? "active" : ""}`}><Icon size={13} /> {item.label.replace("COMMAND CENTER", "COMMAND")}</button>; })}
+        </nav>
+        <div className="header-cta" style={{ justifySelf: "end" }}><Btn variant="primary" icon={Target} onClick={() => navigate("today")} style={{ padding: "9px 14px", fontSize: 11 }}>TODAY'S FOCUS</Btn></div>
+        <button className="mobile-menu-button focus-ring" onClick={() => setNavOpen(open => !open)} aria-label={navOpen ? "Close navigation" : "Open navigation"} aria-expanded={navOpen}><Menu size={20} /></button>
       </div>
-      {NAV_ITEMS.map(item => {
-        const Icon = item.icon;
-        const active = view === item.id;
-        return (
-          <button key={item.id} onClick={() => setView(item.id)} className="focus-ring"
-            style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 6,
-              background: active ? COLORS.surface2 : "transparent", border: "none",
-              color: active ? COLORS.text : COLORS.textDim, fontSize: 12.5, fontWeight: 600,
-              letterSpacing: 0.4, textAlign: "left", transition: "background .15s, color .15s",
-            }}>
-            <Icon size={15} strokeWidth={2} style={{ flexShrink: 0, color: active ? COLORS.emerald : COLORS.textFaint }} />
-            {item.label}
-          </button>
-        );
-      })}
-      <style>{`@media (max-width: 900px) { .side-nav-desktop { display: none; } }`}</style>
-    </nav>
-  );
-}
-
-function MobileNav({ view, setView, hidden }) {
-  if (hidden) return null;
-  const items = [
-    { id: "command", icon: Home },
-    { id: "today", icon: Target },
-    { id: "habits", icon: Grid3x3 },
-    { id: "analytics", icon: BarChart3 },
-    { id: "compare", icon: Swords },
-  ];
-  return (
-    <>
-      <nav className="mobile-nav" style={{
-        display: "none", position: "fixed", bottom: 0, left: 0, right: 0,
-        background: COLORS.surface, borderTop: `1px solid ${COLORS.border}`,
-        padding: "8px 6px calc(8px + env(safe-area-inset-bottom))", zIndex: 40,
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-around" }}>
-          {items.map(item => {
-            const Icon = item.icon;
-            const active = view === item.id;
-            return (
-              <button key={item.id} onClick={() => setView(item.id)} className="focus-ring"
-                style={{ background: "none", border: "none", padding: 8, borderRadius: 8, color: active ? COLORS.emerald : COLORS.textFaint }}>
-                <Icon size={22} strokeWidth={active ? 2.4 : 2} />
-              </button>
-            );
-          })}
-        </div>
+      <nav className={`mobile-drawer ${navOpen ? "open" : ""}`} aria-label="Mobile navigation">
+        {NAV_ITEMS.map(item => { const Icon = item.icon; return <button key={item.id} onClick={() => navigate(item.id)} className={`header-link focus-ring ${view === item.id ? "active" : ""}`}><Icon size={16} /> {item.label}</button>; })}
+        <Btn variant="primary" icon={Target} onClick={() => navigate("today")} style={{ marginTop: 6, justifyContent: "center" }}>TODAY'S FOCUS</Btn>
       </nav>
-      <style>{`@media (max-width: 900px) { .mobile-nav { display: block !important; } main { padding-bottom: 70px; } }`}</style>
-    </>
+    </header>
   );
 }
 
@@ -809,9 +804,9 @@ function Toast({ toast }) {
 ============================================================================ */
 function Card({ children, style, className }) {
   return (
-    <div className={`card-anim ${className || ""}`} style={{
+    <div className={`card-anim glass-panel ${className || ""}`} style={{
       background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 10,
-      padding: 16, ...style,
+      padding: 16, boxShadow: "0 14px 40px rgba(0, 0, 0, .16)", ...style,
     }}>
       {children}
     </div>
@@ -848,7 +843,7 @@ function Btn({ children, onClick, variant = "default", style, icon: Icon, disabl
   };
   const variants = {
     default: { background: COLORS.surface2, color: COLORS.text },
-    primary: { background: COLORS.emerald, color: "#04120C", border: `1px solid ${COLORS.emerald}` },
+    primary: { background: `linear-gradient(135deg, ${COLORS.indigo}, ${COLORS.cyan})`, color: "#F9FAFB", border: "1px solid rgba(255,255,255,.18)", boxShadow: `0 8px 24px ${COLORS.indigo}44` },
     danger: { background: "transparent", color: COLORS.crimson, border: `1px solid ${COLORS.crimson}44` },
     ghost: { background: "transparent", color: COLORS.textDim, border: "1px solid transparent" },
   };
@@ -2529,9 +2524,6 @@ function AnalyticsView() {
       score,
       previousScore,
       bestHabit,
-      weakestHabit,
-      bestDay: dayPerformance.best,
-      worstDay: dayPerformance.worst,
       historicalBest: previousBest,
     });
 
@@ -3682,9 +3674,6 @@ function getPerformanceInsight({
   score,
   previousScore,
   bestHabit,
-  weakestHabit,
-  bestDay,
-  worstDay,
   historicalBest,
 }) {
 
@@ -4035,22 +4024,14 @@ function HeatmapView() {
   const activeHabits = state.habits.filter(h => !h.archived);
   const [hover, setHover] = useState(null);
 
-  const weeks = useMemo(() => {
+  const dates = useMemo(() => {
     const end = fromDateStr(today);
     const start = new Date(end); start.setDate(start.getDate() - 370);
-    // align start to Sunday
     while (start.getDay() !== 0) start.setDate(start.getDate() - 1);
-    const cols = [];
     let cur = new Date(start);
-    while (cur <= end) {
-      const col = [];
-      for (let i = 0; i < 7; i++) {
-        col.push(toDateStr(cur));
-        cur.setDate(cur.getDate() + 1);
-      }
-      cols.push(col);
-    }
-    return cols;
+    const days = [];
+    while (cur <= end) { days.push(toDateStr(cur)); cur.setDate(cur.getDate() + 1); }
+    return days;
   }, [today]);
 
   function scoreFor(d) {
@@ -4071,35 +4052,33 @@ function HeatmapView() {
   return (
     <div>
       <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 16 }}>365-Day Heatmap</h1>
-      <Card style={{ overflow: "auto" }}>
-        <div style={{ display: "flex", gap: 3 }}>
-          {weeks.map((col, ci) => (
-            <div key={ci} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {col.map(d => {
-                const s = scoreFor(d);
-                return (
-                  <div key={d}
-                    onMouseEnter={() => setHover({ d, s })}
-                    onMouseLeave={() => setHover(h => (h && h.d === d ? null : h))}
-                    title={`${d}: ${s === null ? "no data" : s.toFixed(0) + "%"}`}
-                    style={{ width: 11, height: 11, borderRadius: 2, background: colorFor(s), cursor: "pointer" }} />
-                );
-              })}
-            </div>
-          ))}
+      <Card style={{ width: "100%" }}>
+        <div className="heatmap-grid" role="grid" aria-label="365-day performance heatmap">
+          {dates.map(d => {
+            const s = scoreFor(d);
+            return (
+              <div key={d}
+                className="heatmap-cell"
+                role="gridcell"
+                onMouseEnter={() => setHover({ d, s })}
+                onMouseLeave={() => setHover(h => (h && h.d === d ? null : h))}
+                title={`${d}: ${s === null ? "no data" : s.toFixed(0) + "%"}`}
+                style={{ background: colorFor(s), cursor: "pointer" }} />
+            );
+          })}
         </div>
       </Card>
-      <div style={{ marginTop: 12, minHeight: 20, fontSize: 12.5, color: COLORS.textDim }}>
+      <div className="heatmap-legend" style={{ minHeight: 20, fontSize: 12.5, color: COLORS.textDim }}>
         {hover ? (
           <span className="mono">{niceDate(hover.d)} — {hover.s === null ? "no data" : `Score ${hover.s.toFixed(0)}%`}</span>
         ) : "Hover a square to inspect that day."}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14, fontSize: 11, color: COLORS.textFaint }}>
-        Less
-        {[COLORS.surface2, COLORS.crimson, "#F97373", COLORS.amber, "#34D399", COLORS.emerald].map((c, i) => (
-          <span key={i} style={{ width: 11, height: 11, borderRadius: 2, background: c }} />
-        ))}
-        More
+        <div className="heatmap-scale" style={{ fontSize: 11, color: COLORS.textFaint }}>
+          <span>Less</span>
+          {[COLORS.surface2, COLORS.crimson, "#F97373", COLORS.amber, "#34D399", COLORS.emerald].map((c, i) => (
+            <span key={i} className="heatmap-swatch" style={{ background: c }} />
+          ))}
+          <span>More</span>
+        </div>
       </div>
     </div>
   );
