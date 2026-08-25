@@ -231,6 +231,54 @@
   color: #f9fafb;
 }
 
+.quantitative-input-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.quantitative-input-wrap .quantitative-input {
+  padding-right: 76px;
+}
+
+.quantitative-unit {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  max-width: 64px;
+  overflow: hidden;
+  color: #aab5c7;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+.schedule-tag {
+  color: #06b6d4;
+  font-weight: 700;
+}
+
+.notes-field {
+  display: block;
+  margin-top: 16px;
+}
+
+.notes-field textarea {
+  display: block;
+  width: 100%;
+  min-height: 88px;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 7px;
+  padding: 10px 12px;
+  background: rgba(29, 41, 63, 0.86);
+  color: #f9fafb;
+  font: inherit;
+  line-height: 1.5;
+}
+
 .stepper-button {
   min-width: 48px;
   border: 1px solid rgba(148, 163, 184, 0.18);

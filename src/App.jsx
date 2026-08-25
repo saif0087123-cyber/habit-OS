@@ -350,6 +350,7 @@ const normalizedState = s
             allowGraceFreeze: true,
             reminderEnabled: false,
             reminderTime: "19:00",
+            scheduleTag: "",
             ...habit,
           }))
         : [],
@@ -1417,9 +1418,8 @@ function TodayRow({ habit, onEdit }) {
                 marginTop: 3,
               }}
             >
-              {isCompleted
-                ? "Completed today"
-                : habit.category}
+              {isCompleted ? "Completed today" : habit.category}
+              {habit.scheduleTag && <span className="schedule-tag"> · {habit.scheduleTag}</span>}
             </div>
 
           </div>
@@ -1561,6 +1561,7 @@ function TodayRow({ habit, onEdit }) {
             {habit.targetValue}
             {" "}
             {habit.unit}
+            {habit.scheduleTag && <span className="schedule-tag"> · {habit.scheduleTag}</span>}
           </div>
 
           <div className="progress-card-track"
@@ -1632,11 +1633,12 @@ function QuantModal({ habit, date, onClose }) {
   const targetLimit = Math.max(1, Number(habit.targetValue) || 1);
   const clampValue = value => Math.min(targetLimit, Math.max(0, Number(value) || 0));
   const [val, setVal] = useState(clampValue(rec?.loggedValue ?? 0));
+  const [notes, setNotes] = useState(rec?.notes || "");
 
   function save() {
     const n = clampValue(val);
     const status = n >= habit.targetValue ? "completed" : n > 0 ? "partial" : "untracked";
-    app.setRecord(habit.id, date, { loggedValue: n, status, targetSnapshot: habit.targetValue });
+    app.setRecord(habit.id, date, { loggedValue: n, status, targetSnapshot: habit.targetValue, notes: notes.trim() });
     onClose();
   }
 
@@ -1646,18 +1648,24 @@ function QuantModal({ habit, date, onClose }) {
       <div style={{ fontSize: 13, color: COLORS.textDim, marginBottom: 16 }}>Target: {habit.targetValue} {habit.unit}</div>
       <div className="quantitative-stepper">
         <button type="button" className="stepper-button focus-ring" aria-label="Decrease tracked amount" disabled={Number(val) <= 0} onClick={() => setVal(value => clampValue(Number(value) - 1))}>-</button>
-        <input id="quantitative-value" name="quantitativeValue" autoFocus type="number" min="0" max={targetLimit} value={val} onChange={e => setVal(e.target.value === "" ? "" : clampValue(e.target.value))} onKeyDown={e => {
-          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-            e.preventDefault();
-            setVal(value => clampValue(Number(value) + (e.key === "ArrowUp" ? 1 : -1)));
-          }
-        }}
-          className="focus-ring mono quantitative-input" />
+        <div className="quantitative-input-wrap">
+          <input id="quantitative-value" name="quantitativeValue" autoFocus type="number" min="0" max={targetLimit} value={val} onChange={e => setVal(e.target.value === "" ? "" : clampValue(e.target.value))} onKeyDown={e => {
+            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+              e.preventDefault();
+              setVal(value => clampValue(Number(value) + (e.key === "ArrowUp" ? 1 : -1)));
+            }
+          }} className="focus-ring mono quantitative-input" />
+          <span className="quantitative-unit">{habit.unit}</span>
+        </div>
         <button type="button" className="stepper-button focus-ring" aria-label="Increase tracked amount" disabled={Number(val) >= targetLimit} onClick={() => setVal(value => clampValue(Number(value) + 1))}>+</button>
       </div>
       <div style={{ fontSize: 12, color: COLORS.textFaint, marginBottom: 18 }} className="mono">
         {val || 0} / {habit.targetValue} {habit.unit} · {Math.min(100, Math.round((Number(val || 0) / habit.targetValue) * 100))}%
       </div>
+      <label className="notes-field">
+        <FieldLabel>Daily Notes</FieldLabel>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="What helped, changed, or got in the way today?" rows={4} className="focus-ring" />
+      </label>
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <Btn onClick={onClose}>Cancel</Btn>
         <Btn variant="primary" onClick={save}>Save</Btn>
@@ -1684,6 +1692,7 @@ function BinaryEditModal({
     useState(
       rec?.status || "untracked"
     );
+  const [notes, setNotes] = useState(rec?.notes || "");
 
   function save() {
     app.setRecord(
@@ -1691,6 +1700,7 @@ function BinaryEditModal({
       date,
       {
         status,
+        notes: notes.trim(),
       }
     );
 
@@ -1768,6 +1778,11 @@ function BinaryEditModal({
         </ToggleChip>
 
       </div>
+
+      <label className="notes-field">
+        <FieldLabel>Daily Notes</FieldLabel>
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add a reflection or context for today" rows={4} className="focus-ring" />
+      </label>
 
       <div
         style={{
@@ -2267,6 +2282,7 @@ function HabitEditor({ habit, onClose }) {
   const [freq, setFreq] = useState(habit?.frequency || [0,1,2,3,4,5,6]);
   const [reminderEnabled, setReminderEnabled] = useState(habit?.reminderEnabled || false);
   const [reminderTime, setReminderTime] = useState(habit?.reminderTime || "19:00");
+  const [scheduleTag, setScheduleTag] = useState(habit?.scheduleTag || "");
   const [error, setError] = useState("");
 
   function save() {
@@ -2283,7 +2299,7 @@ function HabitEditor({ habit, onClose }) {
       name: name.trim(), category, type, weight: Number(weight), frequency: freq,
       targetValue: type === "quantitative" ? targetValue : undefined,
       unit: type === "quantitative" ? normalizedUnit : undefined,
-      reminderEnabled, reminderTime,
+      reminderEnabled, reminderTime, scheduleTag: scheduleTag.trim(),
     };
     if (isNew) app.addHabit(payload);
     else app.updateHabit(habit.id, payload);
@@ -2334,6 +2350,8 @@ function HabitEditor({ habit, onClose }) {
           <FieldLabel>Schedule</FieldLabel>
           <WeekdayPicker value={freq} onChange={setFreq} />
         </div>
+
+        <TextField label="Time Slot (Optional)" value={scheduleTag} onChange={setScheduleTag} placeholder="08:00 AM, Morning Routine, Before Bed" />
 
         <div>
           <FieldLabel>Importance</FieldLabel>
@@ -5825,6 +5843,7 @@ function handleFile(e) {
             allowGraceFreeze: true,
             reminderEnabled: false,
             reminderTime: "19:00",
+            scheduleTag: "",
             ...habit,
           })),
 
